@@ -19,12 +19,14 @@ from src.visualizacao import (
     plotar_comparacao_roc
 )
 
+
 # Configuração de diretórios
 DIRETORIO_BASE = Path(__file__).resolve().parent.parent
 CAMINHO_DATASET = DIRETORIO_BASE / "dataset" / "mini_gm_public_v0.1.p"
 DIRETORIO_SAIDA = DIRETORIO_BASE / "outputs"
 DIRETORIO_FIGURAS = DIRETORIO_SAIDA / "figuras"
 DIRETORIO_RESULTADOS = DIRETORIO_SAIDA / "resultados"
+
 
 DIRETORIO_FIGURAS.mkdir(parents=True, exist_ok=True)
 DIRETORIO_RESULTADOS.mkdir(parents=True, exist_ok=True)
@@ -36,7 +38,7 @@ df = achatar_dataset(dados)
 validar_dataset(df)
 
 
-# EDA e Visualizações
+# Plotagem das EDA
 figura = plotar_imagens_por_sindrome(df)
 figura.savefig(DIRETORIO_FIGURAS / "imagens_por_sindrome.png", dpi=300, bbox_inches="tight")
 
@@ -65,14 +67,14 @@ embeddings, rotulos, rotulos_codificados, grupos, classes = preparar_dados(df)
 # Estatísticas dos embeddings
 estatisticas_embeddings = pd.DataFrame(embeddings).describe().T
 estatisticas_embeddings[["mean", "std", "min", "max"]].to_csv(
-    DIRETORIO_RESULTADOS / "estatisticas_embeddings.csv"
-)
+    DIRETORIO_RESULTADOS / "estatisticas_embeddings.csv")
+
 
 figura = plotar_distribuicao_embeddings(embeddings)
 figura.savefig(DIRETORIO_FIGURAS / "distribuicao_embeddings.png", dpi=300, bbox_inches="tight")
 
 
-# t-SNE
+# Executar t-sne e depois plotar
 dados_tsne = executar_tsne(embeddings, df, 42)
 dados_tsne.to_csv(DIRETORIO_RESULTADOS / "coordenadas_tsne.csv", index=False)
 
@@ -80,17 +82,21 @@ figura = plotar_tsne(dados_tsne)
 figura.savefig(DIRETORIO_FIGURAS / "tsne.png", dpi=300, bbox_inches="tight")
 
 
-# KNN e Validação Cruzada
+
+# KNN e validação cruzada
 resultados_knn = []
 numero_classes = len(classes)
+
 
 for metrica in ["euclidiana", "cosseno"]:
     for k in range(1, 16):
 
         f1_por_fold, auc_por_fold = [], []
         top1_por_fold, top3_por_fold, top5_por_fold = [], [], []
+        
 
         validacao = StratifiedGroupKFold(n_splits=10, shuffle=True, random_state=42)
+        
 
         for indices_treino, indices_teste in validacao.split(embeddings, rotulos_codificados, grupos):
             dados_treino = embeddings[indices_treino]
@@ -108,6 +114,8 @@ for metrica in ["euclidiana", "cosseno"]:
             top1_por_fold.append(acuracia_top_k(rotulos_teste, classificacoes, k=1))
             top3_por_fold.append(acuracia_top_k(rotulos_teste, classificacoes, k=3))
             top5_por_fold.append(acuracia_top_k(rotulos_teste, classificacoes, k=5))
+            
+            
 
         resultados_knn.append({
             "metrica": metrica,
@@ -123,15 +131,19 @@ for metrica in ["euclidiana", "cosseno"]:
             "top5_media": np.mean(top5_por_fold),
             "top5_desvio": np.std(top5_por_fold)
         })
+        
+
+# Guardando dados
 
 
-# --- PROCESSAMENTO E EXPORTAÇÃO DOS RESULTADOS GERAIS DO KNN ---
+# Processamento e depois exportação dos resultados do KNN
 resultados_df = pd.DataFrame(resultados_knn)
 
-# 1. Guarda o CSV original completo (alta precisão para consultas futuras)
+#guarda o CSV original completo
 resultados_df.to_csv(DIRETORIO_RESULTADOS / "resultados_knn.csv", index=False)
 
-# 2. Reestrutura para o Markdown (formato compacto Média ± Desvio com 4 casas decimais)
+
+# Markdown para visualização melhor
 df_knn_fmt = resultados_df.round(4)
 df_knn_exibicao = pd.DataFrame({
     "Métrica": df_knn_fmt["metrica"],
@@ -143,11 +155,12 @@ df_knn_exibicao = pd.DataFrame({
     "Top-5 Acc": df_knn_fmt["top5_media"].astype(str) + " ± " + df_knn_fmt["top5_desvio"].astype(str)
 })
 
+
 with open(DIRETORIO_RESULTADOS / "resultados_knn.md", "w", encoding="utf-8") as f:
     f.write(df_knn_exibicao.to_string(index=False))
 
 
-# --- FILTRO E EXPORTAÇÃO DOS MELHORES RESULTADOS POR F1 ---
+# Exporta os melhores resultados por f1
 melhores_resultados = []
 for metrica in resultados_df["metrica"].unique():
     resultados_metrica = resultados_df[resultados_df["metrica"] == metrica]
@@ -156,10 +169,12 @@ for metrica in resultados_df["metrica"].unique():
 
 melhores_resultados_df = pd.DataFrame(melhores_resultados)
 
-# 1. Guarda o CSV original dos melhores resultados
+#Guarda CSV original dos melhores resultados
 melhores_resultados_df.to_csv(DIRETORIO_RESULTADOS / "melhores_resultados.csv", index=False)
 
-# 2. Reestrutura o Markdown dos melhores resultados para relatórios
+
+
+# Markdown dos melhores resultados
 df_melhores_fmt = melhores_resultados_df.round(4)
 df_melhores_exibicao = pd.DataFrame({
     "Métrica": df_melhores_fmt["metrica"],
@@ -182,6 +197,7 @@ melhores_k = {linha["metrica"]: int(linha["k"]) for _, linha in melhores_resulta
 # Curvas ROC para os melhores modelos
 resultados_roc = {}
 
+
 for metrica in ["euclidiana", "cosseno"]:
     k = melhores_k[metrica]
     validacao = StratifiedGroupKFold(n_splits=10, shuffle=True, random_state=42)
@@ -192,6 +208,8 @@ for metrica in ["euclidiana", "cosseno"]:
     for indices_treino, indices_teste in validacao.split(embeddings, rotulos_codificados, grupos):
         dados_treino = embeddings[indices_treino]
         dados_teste = embeddings[indices_teste]
+        
+        #print("cheguei 1")
 
         rotulos_treino = rotulos_codificados[indices_treino]
         rotulos_teste = rotulos_codificados[indices_teste]
@@ -204,16 +222,27 @@ for metrica in ["euclidiana", "cosseno"]:
 
         tprs_das_classes, aucs_das_classes = [], []
         for curva in curvas_classes:
-            tpr_interpolado = np.interp(
-                fpr_medio,
-                curva["taxas_falsos_positivos"],
-                curva["taxas_verdadeiros_positivos"]
-            )
+            fpr_curva = curva["taxas_falsos_positivos"]
+            tpr_curva = curva["taxas_verdadeiros_positivos"]
+
+            fpr_unico = np.unique(fpr_curva)
+            tpr_unico = np.array([
+                tpr_curva[fpr_curva == fpr].max()
+                for fpr in fpr_unico
+                ])
+            
+            #mudança tpr
+            
+            tpr_interpolado = np.interp(fpr_medio, fpr_unico, tpr_unico)
+            tpr_interpolado[0] = 0.0
+            tpr_interpolado[-1] = 1.0
             tprs_das_classes.append(tpr_interpolado)
             aucs_das_classes.append(curva["auc"])
+            #print("cheguei 2")
 
         tprs_por_fold.append(np.mean(tprs_das_classes, axis=0))
         aucs_por_fold.append(np.mean(aucs_das_classes))
+        
 
     resultados_roc[metrica] = {
         "fpr": fpr_medio,
@@ -223,7 +252,7 @@ for metrica in ["euclidiana", "cosseno"]:
     }
 
 
-# Salvar gráfico da curva ROC comparativa
+# Salva gráfico da curva ROC comparativa
 figura = plotar_comparacao_roc(
     resultados_roc["euclidiana"]["fpr"],
     resultados_roc["euclidiana"]["tpr"],
@@ -232,4 +261,6 @@ figura = plotar_comparacao_roc(
     resultados_roc["cosseno"]["tpr"],
     resultados_roc["cosseno"]["auc"]
 )
+
 figura.savefig(DIRETORIO_FIGURAS / "comparacao_roc.png", dpi=300, bbox_inches="tight")
+print("Tudo gerado")
